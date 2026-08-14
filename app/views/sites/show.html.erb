@@ -1,0 +1,65 @@
+<% content_for :title, @site.name %>
+
+<div style="width:100%;max-width:960px;margin:0 auto;">
+  <% if notice.present? %>
+    <p style="color:green"><%= notice %></p>
+  <% end %>
+
+  <p><%= link_to "← 一覧へ", sites_path %></p>
+
+  <div style="display:flex;align-items:center;gap:12px;">
+    <%= status_badge(@site.last_status) %>
+    <h1 style="margin:0;"><%= @site.name %></h1>
+  </div>
+
+  <table style="margin-top:1rem;border-collapse:collapse;">
+    <tr><td style="padding:4px 12px 4px 0;color:#666;">URL</td>
+        <td><%= link_to @site.url, @site.url, target: "_blank", rel: "noopener" %></td></tr>
+    <tr><td style="padding:4px 12px 4px 0;color:#666;">チェック間隔</td>
+        <td><%= @site.interval_seconds %> 秒</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;color:#666;">有効</td>
+        <td><%= @site.enabled? ? "はい" : "いいえ" %></td></tr>
+    <tr><td style="padding:4px 12px 4px 0;color:#666;">稼働率 (24h)</td>
+        <td><%= uptime_label(@uptime_24h) %></td></tr>
+    <tr><td style="padding:4px 12px 4px 0;color:#666;">最終チェック</td>
+        <td><%= @site.last_checked_at ? l(@site.last_checked_at, format: :long) : "未チェック" %></td></tr>
+  </table>
+
+  <div style="margin-top:1rem;display:flex;gap:8px;">
+    <%= button_to "今すぐチェック", check_now_site_path(@site), method: :post %>
+    <%= link_to "編集", edit_site_path(@site) %>
+    <%= button_to "削除", @site, method: :delete, data: { turbo_confirm: "削除しますか？" } %>
+  </div>
+
+  <h2 style="margin-top:2rem;">チェック履歴（直近50件）</h2>
+  <table style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr style="text-align:left;border-bottom:2px solid #ddd;">
+        <th style="padding:8px;">結果</th>
+        <th style="padding:8px;">HTTP</th>
+        <th style="padding:8px;">応答時間</th>
+        <th style="padding:8px;">エラー</th>
+        <th style="padding:8px;">日時</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @checks.each do |check| %>
+        <tr style="border-bottom:1px solid #eee;">
+          <td style="padding:8px;">
+            <span style="padding:2px 8px;border-radius:4px;color:#fff;background:<%= check.ok? ? "#16a34a" : "#dc2626" %>;">
+              <%= check.ok? ? "OK" : "NG" %>
+            </span>
+          </td>
+          <td style="padding:8px;"><%= check.status_code || "-" %></td>
+          <td style="padding:8px;"><%= check.response_time_ms ? "#{check.response_time_ms} ms" : "-" %></td>
+          <td style="padding:8px;font-size:0.85em;color:#dc2626;"><%= check.error_message %></td>
+          <td style="padding:8px;font-size:0.85em;"><%= l(check.checked_at, format: :short) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+
+  <% if @checks.empty? %>
+    <p style="color:#666;">まだチェック履歴がありません。</p>
+  <% end %>
+</div>

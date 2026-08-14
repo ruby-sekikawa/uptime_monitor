@@ -1,0 +1,46 @@
+<% content_for :title, "死活監視ダッシュボード" %>
+
+<div style="width:100%;max-width:960px;margin:0 auto;">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h1>死活監視ダッシュボード</h1>
+    <%= link_to "監視対象を追加", new_site_path %>
+  </div>
+
+  <% if notice.present? %>
+    <p style="color:green"><%= notice %></p>
+  <% end %>
+
+  <table style="width:100%;border-collapse:collapse;margin-top:1rem;">
+    <thead>
+      <tr style="text-align:left;border-bottom:2px solid #ddd;">
+        <th style="padding:8px;">状態</th>
+        <th style="padding:8px;">名前</th>
+        <th style="padding:8px;">URL</th>
+        <th style="padding:8px;">稼働率(24h)</th>
+        <th style="padding:8px;">最終チェック</th>
+        <th style="padding:8px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @sites.each do |site| %>
+        <%# フラグメントキャッシュ（Phase 4）。site 更新で自動的にキーが変わる。 %>
+        <% cache site do %>
+          <tr style="border-bottom:1px solid #eee;<%= "opacity:0.5;" unless site.enabled %>">
+            <td style="padding:8px;"><%= status_badge(site.last_status) %></td>
+            <td style="padding:8px;"><%= link_to site.name, site %></td>
+            <td style="padding:8px;font-size:0.85em;color:#555;"><%= truncate(site.url, length: 40) %></td>
+            <td style="padding:8px;"><%= uptime_label(site.uptime_ratio(24.hours)) %></td>
+            <td style="padding:8px;font-size:0.85em;">
+              <%= site.last_checked_at ? l(site.last_checked_at, format: :short) : "未チェック" %>
+            </td>
+            <td style="padding:8px;"><%= link_to "詳細", site %></td>
+          </tr>
+        <% end %>
+      <% end %>
+    </tbody>
+  </table>
+
+  <% if @sites.empty? %>
+    <p style="margin-top:1rem;color:#666;">監視対象がありません。「監視対象を追加」から登録してください。</p>
+  <% end %>
+</div>

@@ -1,0 +1,24 @@
+default: &default
+  dispatchers:
+    - polling_interval: 1
+      batch_size: 500
+      # recurring.yml のスケジュールを読み込んで定期ジョブを投入する
+      recurring_tasks: true
+  workers:
+    # HTTP チェックはブロッキングI/Oが中心なので、専用キューにスレッドを多めに割く
+    - queues: "checks"
+      threads: 5
+      polling_interval: 1
+    # その他（親ジョブや後片付けなど）は少なめのスレッドで処理
+    - queues: "*"
+      threads: 3
+      polling_interval: 1
+
+development:
+  <<: *default
+
+test:
+  <<: *default
+
+production:
+  <<: *default

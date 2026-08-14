@@ -1,0 +1,15 @@
+# 定期ジョブの定義。config/queue.yml の dispatcher が recurring_tasks: true のとき読み込まれる。
+#
+# 注意: Rails 8 生成物は production キーだけを持つことがある。
+#       開発環境でも定期実行を体験したいので development にも定義する（YAML アンカーで共有）。
+development: &default
+  enqueue_due_checks:
+    class: EnqueueDueChecksJob
+    schedule: every minute
+  # Solid Queue が積み上げる完了済みジョブを定期的に掃除する（生成時のデフォルトを踏襲）
+  clear_solid_queue_finished_jobs:
+    command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
+    schedule: every hour at minute 12
+
+production:
+  <<: *default
