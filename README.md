@@ -3,7 +3,9 @@
 Rails 8 の **Solid Queue / Solid Cache / Kamal 2** を、Redis・Sidekiq・Memcached を一切立てずに動かす学習用アプリ。
 URL を登録し、1分おきに HTTP を叩いて結果を記録・表示する。設計判断と計測値は [`NOTES.md`](NOTES.md) に集約。
 
-実装計画: [`solid-trifecta-uptime-monitor-plan.md`](solid-trifecta-uptime-monitor-plan.md)
+- 実装の詳細（仕組み・手順・設計判断）: [`docs/implementation.md`](docs/implementation.md)
+- 詰まりログ・計測値・判断: [`NOTES.md`](NOTES.md)
+- 実装計画: [`solid-trifecta-uptime-monitor-plan.md`](solid-trifecta-uptime-monitor-plan.md)
 
 ## 技術スタック
 
