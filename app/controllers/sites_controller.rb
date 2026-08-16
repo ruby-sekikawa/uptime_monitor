@@ -4,6 +4,8 @@ class SitesController < ApplicationController
   # GET /sites or /sites.json
   def index
     @sites = Site.order(:name)
+    # 各行で uptime_ratio を呼ぶと N+1 になるため、全サイトの稼働率を 1 クエリでまとめて取得する。
+    @uptime = Site.uptime_ratios(24.hours)
   end
 
   # GET /sites/1 or /sites/1.json

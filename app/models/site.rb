@@ -18,8 +18,20 @@ class Site < ApplicationRecord
     )
   }
 
-  # 稼働率（%）。期間内の Check のうち ok の割合。
-  # 集計は重くなりがちなので Solid Cache に載せる（Phase 4）。
+  # 全サイトの稼働率(%)を GROUP BY で「1クエリ」でまとめて返す。 { site_id => ratio_or_nil }。
+  # 一覧ページで各行ごとに uptime_ratio を呼ぶと N+1(1 + 2N クエリ)になるため、
+  # 一覧ではこちらを使って 1 クエリに畳む。期間内に Check が無いサイトはハッシュに現れない(= nil 扱い)。
+  def self.uptime_ratios(period = 24.hours)
+    Check.where(checked_at: period.ago..)
+         .group(:site_id)
+         .pluck(
+           Arel.sql("site_id"),
+           Arel.sql("ROUND(100.0 * SUM(CASE WHEN ok THEN 1 ELSE 0 END) / COUNT(*), 2)")
+         )
+         .to_h
+  end
+
+  # 単一サイトの稼働率(%)。詳細ページ用。集計を Solid Cache に載せる（Phase 4）。
   # cache_key_with_version により、Site 更新時は自動的に別キーになる。
   def uptime_ratio(period = 24.hours)
     Rails.cache.fetch([ cache_key_with_version, "uptime", period.to_i ], expires_in: 5.minutes) do

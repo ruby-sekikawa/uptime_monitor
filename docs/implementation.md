@@ -231,9 +231,7 @@ development:
     namespace: <%= Rails.env %>
 ```
 
-### 5.2 使っている2箇所
-
-**① 低レベルキャッシュ — 稼働率の集計（`app/models/site.rb`）**
+### 5.2 使いどころ — 詳細ページの低レベルキャッシュ（`app/models/site.rb`）
 
 ```ruby
 def uptime_ratio(period = 24.hours)
@@ -245,39 +243,50 @@ def uptime_ratio(period = 24.hours)
 end
 ```
 
-**② フラグメントキャッシュ — 一覧の各行（`app/views/sites/index.html.erb`）**
+- キーは `cache_key_with_version`（`sites/1-<updated_at>`）を含むので、**Site を更新すると自動的に別キー**になり即失効する。
+- Check が増えるだけでは `sites.updated_at` は動かないので、そこは **TTL 5分**で反映上限を決める。
+  `touch: true` で即時反映もできるが、1分ごとに大量の Check を作る本アプリでは `sites` への書き込み競合を招くため不採用。
+- 保存キー例: `development:sites/1-20260814060631925095/uptime/86400`（値は `100.0` のような Float）。
 
+> **一覧ページではキャッシュを使っていない**。当初はフラグメントキャッシュ（`<% cache site %>`）を使っていたが、
+> 計測の結果、一覧の稼働率は **N+1** で、キャッシュは対症療法にすぎなかった。→ 5.3 参照。
+
+### 5.3 一覧の N+1 を GROUP BY で畳んだ（キャッシュより根治を優先）★見直し
+
+一覧で各行 `site.uptime_ratio` を呼ぶと **1 + 2N クエリ**の N+1 になる。キャッシュはこれを2回目以降隠すだけで、
+コールドや失効のたびに N+1 が再発する。そこで**全サイトの稼働率を1クエリで取る**メソッドに畳んだ。
+
+```ruby
+# app/models/site.rb
+def self.uptime_ratios(period = 24.hours)
+  Check.where(checked_at: period.ago..)
+       .group(:site_id)
+       .pluck(Arel.sql("site_id"),
+              Arel.sql("ROUND(100.0 * SUM(CASE WHEN ok THEN 1 ELSE 0 END) / COUNT(*), 2)"))
+       .to_h    # { site_id => ratio_or_nil }
+end
+```
+
+```ruby
+# controller: 1 クエリで全サイトぶん取得
+@uptime = Site.uptime_ratios(24.hours)
+```
 ```erb
-<% @sites.each do |site| %>
-  <% cache site do %>
-    <tr> ... status_badge / uptime_ratio を含む1行 ... </tr>
-  <% end %>
-<% end %>
+<%= uptime_label(@uptime[site.id]) %>   <!-- ビューはハッシュ参照。行ごとのクエリ0 -->
 ```
 
-保存される value は**計算済みの完成HTML文字列**。2回目はERBを評価せず、その文字列をそのまま差し込む。
+**3パターンの実測**（一覧ページ `/sites`、サイト4件、クエリ本数で比較）:
 
-### 5.3 キャッシュキーと無効化
-
-キーは `cache_key_with_version`（`sites/1-<updated_at>`）を含む。**失効の仕組みが2種類ある**:
-
-| | 失効の仕組み | Site更新時 | Check追加時 |
+| 実装 | コールド | ウォーム | 鮮度 |
 |---|---|---|---|
-| 低レベル(uptime) | `updated_at` をキー文字列に埋込 | 別キーが新規作成 | 変わらず → TTL(5分)頼み |
-| フラグメント | version を value 内に保存し読み出し時に比較 | 同じキーを上書き（lazy） | 変わらず → TTL頼み |
+| A. N+1 + フラグメントキャッシュ（当初） | 25 | 5 | TTLで最大5分古い |
+| B. 集計1クエリ + キャッシュ | 10 | 6 | TTLで最大5分古い |
+| C. 集計1クエリ・キャッシュなし（採用） | **2** | **2** | **常に最新** |
 
-- **Site を更新**（名前・URL等）→ `updated_at` が変わる → 次の読み出しで即失効・作り直し。
-- **Check が増える**だけ → `sites.updated_at` は動かない → 最大5分（TTL）遅れて反映。
-- TTL を5分にしたのは、Check 増加の反映上限を決めるため。`touch: true` で即時反映もできるが、
-  1分ごとに大量の Check を作る本アプリでは `sites` への書き込み競合を招くため採用しない。
-
-### 5.4 保存されるキーの実例
-
-```
-development:sites/1-20260814060631925095/uptime/86400          … 低レベル(稼働率の値 100.0)
-development:views/sites/index:d2ab06b533.../sites/1            … フラグメント(行のHTML)
-                          └─ テンプレートダイジェスト。ビュー編集で変わり自動失効
-```
+- 50サイト×各200チェック（1万件）の集計コストは **N+1: 100クエリ/43ms → GROUP BY: 1クエリ/19ms**（結果一致）。
+- **C が全項目で最良**。集計を畳んだ後は、フラグメントキャッシュはむしろ二重コストで足を引っ張る（B > C）。
+- 教訓: **キャッシュの前にまず N+1 を疑う。計測 → 根本原因の特定 → 根治（GROUP BY）→ 必要なら最後にキャッシュ**。
+  dev モードの計測はテンプレートコンパイルが混ざるので、判断は**クエリ本数**と**本番モードの再計測**で行う。
 
 ---
 
@@ -326,7 +335,8 @@ kamal deploy   # 2回目以降
 | リトライ全滅後も down を記録 | 死活監視では「落ちている」事実こそ残したい |
 | `checks` 専用キュー + threads:5 | HTTPチェックはI/Oバウンド。待ちを重ねて効率化 |
 | ワーカーを Puma 内（方式A） | SQLite の同一ホスト制約。1台構成では最も簡単 |
-| キャッシュ TTL 5分 | Check 増加の反映上限。`touch` は書き込み競合を招くため不採用 |
+| 一覧は GROUP BY 1クエリ（キャッシュ撤去） | 計測の結果 N+1 が根本原因。集計を畳めば常に最新・最少クエリでキャッシュ不要 |
+| 詳細ページの稼働率は Solid Cache（TTL 5分） | Check 増加の反映上限。`touch` は書き込み競合を招くため不採用 |
 | モデル名 Site | `Monitor` は Ruby 標準ライブラリと衝突するため |
 
 ---

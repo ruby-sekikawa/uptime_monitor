@@ -23,19 +23,16 @@
     </thead>
     <tbody>
       <% @sites.each do |site| %>
-        <%# フラグメントキャッシュ（Phase 4）。site 更新で自動的にキーが変わる。 %>
-        <% cache site do %>
           <tr style="border-bottom:1px solid #eee;<%= "opacity:0.5;" unless site.enabled %>">
             <td style="padding:8px;"><%= status_badge(site.last_status) %></td>
             <td style="padding:8px;"><%= link_to site.name, site %></td>
             <td style="padding:8px;font-size:0.85em;color:#555;"><%= truncate(site.url, length: 40) %></td>
-            <td style="padding:8px;"><%= uptime_label(site.uptime_ratio(24.hours)) %></td>
+            <td style="padding:8px;"><%= uptime_label(@uptime[site.id]) %></td>
             <td style="padding:8px;font-size:0.85em;">
               <%= site.last_checked_at ? l(site.last_checked_at, format: :short) : "未チェック" %>
             </td>
             <td style="padding:8px;"><%= link_to "詳細", site %></td>
           </tr>
-        <% end %>
       <% end %>
     </tbody>
   </table>
